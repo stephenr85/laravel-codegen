@@ -11,6 +11,7 @@ use Rushing\Codegen\Model\Type;
 
 beforeEach(function () {
     $this->outDir = sys_get_temp_dir().'/codegen-test-'.uniqid();
+    $this->stackOutDir = sys_get_temp_dir().'/codegen-test-stack-'.uniqid();
     config(['codegen.out_dir' => $this->outDir]);
 
     app()->instance(ModelSource::class, new class implements ModelSource
@@ -24,9 +25,11 @@ beforeEach(function () {
 });
 
 afterEach(function () {
-    if (is_dir($this->outDir)) {
-        array_map('unlink', glob($this->outDir.'/*') ?: []);
-        @rmdir($this->outDir);
+    foreach ([$this->outDir, $this->stackOutDir] as $dir) {
+        if (is_dir($dir)) {
+            array_map('unlink', glob($dir.'/*') ?: []);
+            @rmdir($dir);
+        }
     }
 });
 
@@ -53,6 +56,24 @@ it('honours the --stack filter', function () {
 
     expect(file_exists($this->outDir.'/a.txt'))->toBeTrue()
         ->and(file_exists($this->outDir.'/b.txt'))->toBeFalse();
+});
+
+it('writes each stack to its own out_dir, falling back to the global out_dir', function () {
+    // Stack `a` pins its own out_dir; stack `b` inherits the global out_dir.
+    config(['codegen.options.a.out_dir' => $this->stackOutDir]);
+
+    $registry = app(GeneratorRegistry::class);
+    $registry->register(new ClosureGenerator('a', fn (array $m) => ['a.txt' => 'a']));
+    $registry->register(new ClosureGenerator('b', fn (array $m) => ['b.txt' => 'b']));
+
+    $this->artisan('codegen:generate', ['--stack' => ['a', 'b']])->assertSuccessful();
+
+    // `a` landed under its per-stack dir, not the global one.
+    expect(file_get_contents($this->stackOutDir.'/a.txt'))->toBe('a')
+        ->and(file_exists($this->outDir.'/a.txt'))->toBeFalse()
+        // `b` landed under the global dir.
+        ->and(file_get_contents($this->outDir.'/b.txt'))->toBe('b')
+        ->and(file_exists($this->stackOutDir.'/b.txt'))->toBeFalse();
 });
 
 it('rejects an invalid model before generating', function () {

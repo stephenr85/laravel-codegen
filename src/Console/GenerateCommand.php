@@ -36,13 +36,19 @@ class GenerateCommand extends Command
             return self::SUCCESS;
         }
 
-        $writer = new FileWriter(
-            (string) config('codegen.out_dir'),
-            (array) config('codegen.formatters', []),
-        );
+        $formatters = (array) config('codegen.formatters', []);
 
         foreach ($stacks as $stack) {
             $options = (array) (config("codegen.options.{$stack}") ?? []);
+
+            // Resolve the write target per stack: a stack may pin its own `out_dir` under
+            // `codegen.options.{$stack}.out_dir`, else it falls back to the global `codegen.out_dir`.
+            // `out_dir` is a host/write concern — the generator returns relative paths and ignores it —
+            // so the FileWriter, not the generator, owns where those paths land.
+            $outDir = (string) ($options['out_dir'] ?? config('codegen.out_dir'));
+
+            $writer = new FileWriter($outDir, $formatters);
+
             $files = $registry->generate($stack, $model, $options);
             $written = $writer->write($files);
 

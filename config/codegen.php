@@ -17,9 +17,11 @@ return [
         // \App\Codegen\SomeGenerator::class,
     ],
 
-    // Per-stack options passed through as the generator's input['options'].
+    // Per-stack options passed through as the generator's input['options']. A reserved `out_dir` key
+    // overrides the global `out_dir` above for that stack's write target only (the generator still
+    // returns relative paths and ignores it — it's a host/write concern).
     'options' => [
-        // 'ts-client' => ['emit_stores' => false],
+        // 'ts-client' => ['emit_stores' => false, 'out_dir' => resource_path('js/generated')],
     ],
 
     // Post-write formatters, best-effort (skipped if the binary is missing — a generated tree is
