@@ -9,6 +9,14 @@ return [
     // stack. `codegen:generate --stack=ts-client --stack=php-saloon` overrides this.
     'stacks' => [],
 
+    // Generator classes (Rushing\Codegen\Contracts\Generator) to auto-register at boot. Each is
+    // resolved from the container (so generators may declare constructor deps) and registered into
+    // the GeneratorRegistry. Composes with manual registration — a host can still call
+    // app(GeneratorRegistry::class)->register(...) alongside this list.
+    'generators' => [
+        // \App\Codegen\SomeGenerator::class,
+    ],
+
     // Per-stack options passed through as the generator's input['options'].
     'options' => [
         // 'ts-client' => ['emit_stores' => false],
