@@ -23,8 +23,6 @@ class GenerateCommand extends Command
 
     public function handle(GeneratorRegistry $registry, ModelSource $source): int
     {
-        $model = $source->model()->validate();
-
         $requested = $this->option('stack')
             ?: (config('codegen.stacks') ?: $registry->stacks());
 
@@ -38,8 +36,19 @@ class GenerateCommand extends Command
 
         $formatters = (array) config('codegen.formatters', []);
 
+        // The default host model, built once and shared by every stack that does not override its source.
+        $defaultModel = null;
+
         foreach ($stacks as $stack) {
             $options = (array) (config("codegen.options.{$stack}") ?? []);
+
+            // A stack may pin its OWN model source (`codegen.options.{stack}.source` = a ModelSource class)
+            // — e.g. an OpenAPI-fed source for a from-spec SDK stack, distinct from the app's default
+            // route-manifest source. The seam stays "the host decides where the model comes from", now at
+            // per-stack granularity. Each source's model is validated before its generator runs.
+            $model = isset($options['source']) && is_string($options['source'])
+                ? app($options['source'])->model()->validate()
+                : ($defaultModel ??= $source->model()->validate());
 
             // Resolve the write target per stack: a stack may pin its own `out_dir` under
             // `codegen.options.{$stack}.out_dir`, else it falls back to the global `codegen.out_dir`.
