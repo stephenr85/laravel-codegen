@@ -18,4 +18,4 @@ Config: `out_dir`, `stacks` (default set), per-stack `options`, and best-effort 
 The host (the app) registers its `ts-client` / `php-saloon` generators and binds a `ModelSource` that
 hydrates JSON Schema + layers the route manifest. This package binds none of that.
 
-Status: skeleton (codegen-substrate #04). See `.scratch/codegen-substrate/` in the app repo.
+Status: skeleton (codegen-substrate #04).
