@@ -4,6 +4,7 @@ use Rushing\Codegen\Laravel\Tests\ConfiguredGeneratorsTestCase;
 use Rushing\Codegen\Laravel\Tests\TestCase;
 
 uses(TestCase::class)->in('Feature/GenerateCommandTest.php');
+uses(TestCase::class)->in('Feature/RegistryReflectingModelSourceTest.php');
 uses(TestCase::class)->in('Unit');
 
 // Config-driven discovery (codegen-substrate #04) needs `codegen.generators` seeded *before* the
