@@ -8,7 +8,7 @@ use Rushing\Codegen\Contracts\Generator;
 use Rushing\Codegen\GeneratorRegistry;
 use Rushing\Codegen\Laravel\Console\GenerateCommand;
 use Rushing\Codegen\Laravel\Contracts\ModelSource;
-use Rushing\Popcorn\InvocableRegistry;
+use Rushing\Popcorn\Registries\RegistryIndex;
 
 /**
  * Wires rushing/codegen into Laravel (codegen-substrate #04): binds the registry singletons, publishes
@@ -16,8 +16,12 @@ use Rushing\Popcorn\InvocableRegistry;
  * {@see ModelSource} or register any generators — those are the
  * host's job (the app registers its `ts-client`/`php-saloon` generators and its model source).
  *
- * Binds its own `InvocableRegistry` singleton so it stands alone; if `rushing/laravel-popcorn` is also
- * installed it simply shares the same class binding (last registration wins, same no-arg singleton).
+ * ## It no longer binds an `InvocableRegistry`, and the comment that said it did was wrong
+ *
+ * This used to bind `InvocableRegistry` and claim that made codegen "stand alone". It did not: that is
+ * the same container key `rushing/laravel-popcorn` and four other packages bind, so every generator
+ * landed in one estate-wide pool under a bare stack id. Registry-kernel ticket 40 gives
+ * {@see GeneratorRegistry} its own root and the shared bind is gone rather than corrected in prose.
  */
 class CodegenServiceProvider extends ServiceProvider
 {
@@ -25,15 +29,19 @@ class CodegenServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/codegen.php', 'codegen');
 
-        $this->app->singleton(InvocableRegistry::class);
-        $this->app->singleton(
-            GeneratorRegistry::class,
-            fn ($app) => new GeneratorRegistry($app->make(InvocableRegistry::class)),
-        );
+        $this->app->singleton(GeneratorRegistry::class);
     }
 
     public function boot(): void
     {
+        // Codegen owns one registry, so it describes it down into the index from its own provider —
+        // the direction rule: an owner registers DOWN, the index never reaches up. This is why the
+        // package requires `rushing/laravel-popcorn` outright rather than guarding on `class_exists`;
+        // index membership must not be a function of host composition (ticket 04 D1).
+        $this->app->make(RegistryIndex::class)->describe(
+            $this->app->make(GeneratorRegistry::class),
+        );
+
         if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__.'/../config/codegen.php' => config_path('codegen.php'),
