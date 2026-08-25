@@ -210,7 +210,49 @@ class DataClassGenerator implements Generator
 
         [$hint] = $this->phpType($type);
 
-        return $hint === 'mixed' ? 'mixed' : ltrim($hint, '\\?');
+        if ($hint === 'mixed') {
+            return 'mixed';
+        }
+
+        // A `json` element is a bare `array` in the SIGNATURE, which is right — but a bare `array`
+        // inside a docblock has no value type, so `array[]` reads as `array<int, array>` and a static
+        // analyser flags the inner one (`missingType.iterableValue`). An unconstrained JSON object is
+        // honestly `array<string, mixed>`; say so. The signature is unaffected — only the hint widens.
+        if ($hint === 'array') {
+            return 'array<string, mixed>';
+        }
+
+        return $this->docName($hint);
+    }
+
+    /**
+     * Render a type hint as it must read inside a docblock in the generated file's namespace.
+     *
+     * A docblock is raw text — nette resolves the *signature* types against the file's `use` set,
+     * but never the comment. So an unrooted `App\Data\Foo` in a file that is itself
+     * `namespace App\Data` resolves to `App\Data\App\Data\Foo`, a class that does not exist.
+     * A sibling in the file's own namespace therefore collapses to its short name (matching how
+     * nette prints the same class in the signature); everything else keeps its leading backslash.
+     */
+    private function docName(string $hint): string
+    {
+        $hint = ltrim($hint, '?');
+
+        if (! str_starts_with($hint, '\\')) {
+            return $hint;   // scalar or `array`
+        }
+
+        $prefix = '\\'.trim($this->namespace(), '\\').'\\';
+
+        if (str_starts_with($hint, $prefix)) {
+            $short = substr($hint, strlen($prefix));
+
+            if (! str_contains($short, '\\')) {
+                return $short;
+            }
+        }
+
+        return $hint;
     }
 
     private function caseName(string|int $case): string

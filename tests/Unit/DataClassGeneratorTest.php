@@ -75,6 +75,37 @@ it('closes the round-trip: JSON Schema -> model -> Data class', function () {
         ->toContain('public ?int $size = null');
 });
 
+it('emits array-element docblocks that resolve from the generated namespace', function () {
+    $model = (new CodegenModel)
+        ->record('Location', fn (RecordType $r) => $r->field('city', Type::primitive(Primitive::String)))
+        ->record('Dealer', fn (RecordType $r) => $r
+            ->field('locations', Type::listOf(Type::ref('Location')))
+            ->field('owners', Type::listOf(Type::external('App.Models.User')))
+            ->field('byRegion', Type::mapOf(Type::ref('Location')))
+            ->field('provenance', Type::listOf(Type::primitive(Primitive::Json))));
+
+    $files = (new DataClassGenerator)->invoke([
+        'model' => $model->toArray(),
+        'options' => ['namespace' => 'App\\Generated\\Data'],
+    ])['files'];
+
+    $dealer = $files['Dealer.php'];
+
+    expect($dealer)
+        ->toContain('namespace App\Generated\Data;')
+        // A sibling in the file's own namespace reads short — an unrooted `App\Generated\Data\Location`
+        // would resolve to `App\Generated\Data\App\Generated\Data\Location`.
+        ->toContain('@param Location[] $locations')
+        ->toContain('@param array<string, Location> $byRegion')
+        // A class from another namespace keeps its root.
+        ->toContain('@param \App\Models\User[] $owners')
+        // A `json` element is `array` in the signature but `array<string, mixed>` in the doc: a bare
+        // `array` inside a docblock has no value type, so `array[]` reads as `array<int, array>` and
+        // the inner one trips `missingType.iterableValue`.
+        ->toContain('@param array<string, mixed>[] $provenance')
+        ->not->toContain('App\Generated\Data\Location');
+});
+
 it('emits syntactically valid PHP', function () {
     $model = (new CodegenModel)
         ->enum('Kind', ['a', 'b'])
