@@ -4,7 +4,6 @@ use Rushing\Codegen\GeneratorRegistry;
 use Rushing\Codegen\Generators\ClosureGenerator;
 use Rushing\Codegen\Laravel\Contracts\ModelSource;
 use Rushing\Codegen\Model\CodegenModel;
-use Rushing\Codegen\Model\ModelValidationException;
 use Rushing\Codegen\Model\Primitive;
 use Rushing\Codegen\Model\RecordType;
 use Rushing\Codegen\Model\Type;
@@ -88,6 +87,40 @@ it('rejects an invalid model before generating', function () {
 
     app(GeneratorRegistry::class)->register(new ClosureGenerator('fake', fn (array $m) => ['x.txt' => 'x']));
 
-    $this->artisan('codegen:generate')
+    // The validation failure is REPORTED, not propagated: it is one stack's failure, and the command
+    // now owns the decision about what happens to the other stacks. Exit code still says failed.
+    $this->artisan('codegen:generate')->assertFailed();
+
+    expect(file_exists($this->outDir.'/x.txt'))->toBeFalse();
+});
+
+it('does not let one stack failure abort the stacks that follow it', function () {
+    // The measured shape of api-surface-coherence 57: the FIRST stack fatals (there, a schema whose
+    // title was not a legal class name) and every stack after it silently never runs. A truncated
+    // regeneration reads exactly like a complete one, which makes the estate's drift detector report
+    // success by not running.
+    $registry = app(GeneratorRegistry::class);
+    $registry->register(new ClosureGenerator('boom', function (array $m) {
+        throw new RuntimeException('this stack is broken');
+    }));
+    $registry->register(new ClosureGenerator('after', fn (array $m) => ['after.txt' => 'after']));
+
+    $this->artisan('codegen:generate', ['--stack' => ['boom', 'after']])
+        ->expectsOutputToContain('this stack is broken')
         ->assertFailed();
-})->throws(ModelValidationException::class);
+
+    // The stack AFTER the failure still ran and still wrote.
+    expect(file_get_contents($this->outDir.'/after.txt'))->toBe('after');
+});
+
+it('reports every failing stack, not just the first', function () {
+    $registry = app(GeneratorRegistry::class);
+    $registry->register(new ClosureGenerator('boom-a', fn (array $m) => throw new RuntimeException('first failure')));
+    $registry->register(new ClosureGenerator('boom-b', fn (array $m) => throw new RuntimeException('second failure')));
+
+    $this->artisan('codegen:generate', ['--stack' => ['boom-a', 'boom-b']])
+        ->expectsOutputToContain('first failure')
+        ->expectsOutputToContain('second failure')
+        ->expectsOutputToContain('2 of 2 stack(s) failed')
+        ->assertFailed();
+});
