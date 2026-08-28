@@ -1,5 +1,4 @@
 /vendor/
-composer.lock
 
 CLAUDE.md
 composer.local.json
