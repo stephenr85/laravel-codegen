@@ -8,7 +8,6 @@ use Rushing\Codegen\Contracts\Generator;
 use Rushing\Codegen\GeneratorRegistry;
 use Rushing\Codegen\Laravel\Console\GenerateCommand;
 use Rushing\Codegen\Laravel\Contracts\ModelSource;
-use Rushing\Popcorn\Registries\RegistryIndex;
 
 /**
  * Wires rushing/codegen into Laravel (codegen-substrate #04): binds the registry singletons, publishes
@@ -34,13 +33,6 @@ class CodegenServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Codegen owns one registry, so it describes it down into the index from its own provider —
-        // the direction rule: an owner registers DOWN, the index never reaches up. This is why the
-        // package requires `rushing/laravel-popcorn` outright rather than guarding on `class_exists`;
-        // index membership must not be a function of host composition (ticket 04 D1).
-        $this->app->make(RegistryIndex::class)->describe(
-            $this->app->make(GeneratorRegistry::class),
-        );
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
