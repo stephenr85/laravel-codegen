@@ -6,6 +6,7 @@ use Rushing\Codegen\Model\CodegenModel;
 use Rushing\Codegen\Model\Primitive;
 use Rushing\Codegen\Model\RecordType;
 use Rushing\Codegen\Model\Type;
+use Spatie\LaravelData\LaravelDataServiceProvider;
 
 function phpLint(string $code): string
 {
@@ -117,4 +118,73 @@ it('emits syntactically valid PHP', function () {
     foreach ((new DataClassGenerator)->invoke(['model' => $model->toArray(), 'options' => []])['files'] as $rel => $code) {
         expect(phpLint($code))->toContain('No syntax errors detected');
     }
+});
+
+it('emits camelCase properties with MapName for non-camel wire keys', function () {
+    // Owner direction (root 036dff3b): a non-camel wire key becomes a camelCase property carried by
+    // #[MapName]; a key that is already camelCase is left exactly as-is (no attribute).
+    $model = (new CodegenModel)
+        ->record('Mapped', fn (RecordType $r) => $r
+            ->field('max_depth', Type::primitive(Primitive::Int))
+            ->field('ref_id', Type::primitive(Primitive::String))
+            ->field('already_camel', Type::primitive(Primitive::String))
+            ->field('plainCamel', Type::primitive(Primitive::String)));
+
+    $mapped = (new DataClassGenerator)->invoke(['model' => $model->toArray(), 'options' => []])['files']['Mapped.php'];
+
+    expect($mapped)
+        ->toContain('use Spatie\LaravelData\Attributes\MapName;')
+        ->toContain("#[MapName('max_depth')]")
+        ->toContain('public int $maxDepth')
+        ->toContain("#[MapName('ref_id')]")
+        ->toContain('public string $refId')
+        ->toContain("#[MapName('already_camel')]")
+        ->toContain('public string $alreadyCamel')
+        // already-camel wire key: property verbatim, no attribute.
+        ->toContain('public string $plainCamel')
+        ->not->toContain("#[MapName('plainCamel')]")
+        // the non-camel wire names never survive as PHP property names.
+        ->not->toContain('$max_depth')
+        ->not->toContain('$ref_id')
+        ->not->toContain('$already_camel');
+});
+
+it('round-trips a mapped property through from() and toArray()', function () {
+    $this->app->register(LaravelDataServiceProvider::class);
+
+    $model = (new CodegenModel)
+        ->record('RoundTrip', fn (RecordType $r) => $r
+            ->field('max_depth', Type::primitive(Primitive::Int))
+            ->field('ref_id', Type::primitive(Primitive::String)));
+
+    $src = (new DataClassGenerator)->invoke([
+        'model' => $model->toArray(),
+        'options' => ['namespace' => 'Rushing\\Codegen\\Laravel\\Tests\\Generated'],
+    ])['files']['RoundTrip.php'];
+
+    $tmp = tempnam(sys_get_temp_dir(), 'rt').'.php';
+    file_put_contents($tmp, $src);
+    require $tmp;
+    @unlink($tmp);
+
+    $class = 'Rushing\\Codegen\\Laravel\\Tests\\Generated\\RoundTrip';
+    $dto = $class::from(['max_depth' => 3, 'ref_id' => 'r-1']);
+
+    // from() hydrates by the wire key; the property is the camelCase name.
+    expect($dto->maxDepth)->toBe(3)
+        ->and($dto->refId)->toBe('r-1')
+        // toArray() emits the wire key again, which is what storage/transport carries.
+        ->and($dto->toArray())->toMatchArray(['max_depth' => 3, 'ref_id' => 'r-1']);
+});
+
+it('fails loudly when two wire keys camelize to the same property', function () {
+    // `foo_bar` and `fooBar` both camelize to `fooBar`; generation cannot honour both with one
+    // property, so it throws rather than silently drop or merge them.
+    $model = (new CodegenModel)
+        ->record('Collider', fn (RecordType $r) => $r
+            ->field('foo_bar', Type::primitive(Primitive::String))
+            ->field('fooBar', Type::primitive(Primitive::String)));
+
+    expect(fn () => (new DataClassGenerator)->invoke(['model' => $model->toArray(), 'options' => []]))
+        ->toThrow(RuntimeException::class, 'both map to PHP property "$fooBar"');
 });

@@ -39,7 +39,8 @@ it('round-trips: a live tofu providers schema -json document -> model -> Data cl
 
     expect($files['GoogleSqlDatabaseInstance.php'])
         ->toContain('class GoogleSqlDatabaseInstance extends Data')
-        ->toContain('public string $database_version')                                  // required
+        ->toContain("#[MapName('database_version')]")                                   // non-camel wire key -> MapName (root 036dff3b, "everywhere")
+        ->toContain('public string $databaseVersion')                                  // required; camelCase property
         ->toContain('@param GoogleSqlDatabaseInstanceSettings[] $settings')             // nested block -> typed ref, not json; sibling reads short
         ->toContain('public ?array $settings = null');                                  // list-nested -> optional (max_items: 1, no min_items)
 

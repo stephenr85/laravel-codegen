@@ -95,20 +95,60 @@ class DataClassGenerator implements Generator
 
         $ctor = $class->addMethod('__construct');
 
+        // Owner direction (root 036dff3b): DTO properties are camelCase; a non-camel wire key is
+        // carried by #[MapName] rather than named verbatim. Names are pre-resolved so a camelCase
+        // collision (two distinct wire keys that camelize to one PHP name, e.g. `foo_bar` and
+        // `fooBar`) fails loudly instead of silently dropping one — a single property cannot honour
+        // both, and a verbatim fallback would quietly reintroduce the non-camel name the ruling bans.
+        $resolved = [];
+        $claimed = [];
+        $needsMapName = false;
         foreach ($record['fields'] ?? [] as $field) {
+            $wire = (string) $field['name'];
+            $php = Str::camel($wire);
+            if ($php === '') {
+                $php = $wire;
+            }
+
+            if (isset($claimed[$php]) && $claimed[$php] !== $wire) {
+                throw new \RuntimeException(sprintf(
+                    'DataClassGenerator: wire keys "%s" and "%s" both map to PHP property "$%s" on %s\\%s; '
+                    .'rename one in the schema so each property is distinct.',
+                    $claimed[$php],
+                    $wire,
+                    $php,
+                    $this->namespace(),
+                    $record['name'],
+                ));
+            }
+
+            $claimed[$php] = $wire;
+            $needsMapName = $needsMapName || $php !== $wire;
+            $resolved[] = [$field, $wire, $php];
+        }
+
+        if ($needsMapName) {
+            $ns->addUse('Spatie\\LaravelData\\Attributes\\MapName');
+        }
+
+        foreach ($resolved as [$field, $wire, $php]) {
             [$hint, $nullable, $docHint] = $this->phpType($field['type']);
 
-            $param = $ctor->addPromotedParameter($field['name'])
+            $param = $ctor->addPromotedParameter($php)
                 ->setType($hint === 'mixed' ? null : ltrim($hint, '?'))
                 ->setNullable($nullable && $hint !== 'mixed')
                 ->setPublic();
+
+            if ($php !== $wire) {
+                $param->addAttribute('Spatie\\LaravelData\\Attributes\\MapName', [$wire]);
+            }
 
             if ($nullable) {
                 $param->setDefaultValue(null);
             }
 
             if ($docHint !== null) {
-                $ctor->addComment("@param {$docHint} \${$field['name']}");
+                $ctor->addComment("@param {$docHint} \${$php}");
             }
         }
 
