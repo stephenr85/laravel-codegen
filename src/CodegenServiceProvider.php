@@ -89,7 +89,8 @@ class CodegenServiceProvider extends ServiceProvider
                 continue;
             }
 
-            $registry->register($generator);
+            // The host listed it in config, so config is the registrant, not this package's scope.
+            $registry->register($generator, by: Registrant::fromConfig('codegen.generators'));
         }
     }
 }
