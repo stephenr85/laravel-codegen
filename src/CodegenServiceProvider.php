@@ -8,6 +8,7 @@ use Rushing\Codegen\Contracts\Generator;
 use Rushing\Codegen\GeneratorRegistry;
 use Rushing\Codegen\Laravel\Console\GenerateCommand;
 use Rushing\Codegen\Laravel\Contracts\ModelSource;
+use Rushing\Popcorn\Registries\Registrant;
 
 /**
  * Wires rushing/codegen into Laravel (codegen-substrate #04): binds the registry singletons, publishes
@@ -26,12 +27,22 @@ class CodegenServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        Registrant::scoped('rushing/laravel-codegen', $this->registerScoped(...));
+    }
+
+    private function registerScoped(): void
+    {
         $this->mergeConfigFrom(__DIR__.'/../config/codegen.php', 'codegen');
 
         $this->app->singleton(GeneratorRegistry::class);
     }
 
     public function boot(): void
+    {
+        Registrant::scoped('rushing/laravel-codegen', $this->bootScoped(...));
+    }
+
+    private function bootScoped(): void
     {
 
         if ($this->app->runningInConsole()) {
